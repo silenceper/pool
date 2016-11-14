@@ -5,7 +5,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/nestgo/pool"
+	"github.com/silenceper/pool"
 )
 
 func main() {
