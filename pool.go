@@ -13,6 +13,8 @@ type Pool interface {
 
 	Put(interface{}) error
 
+	Close(interface{}) error
+
 	Release()
 
 	Len() int

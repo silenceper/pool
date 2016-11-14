@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net"
+	"time"
 
 	"github.com/nestgo/pool"
 )
@@ -16,7 +17,15 @@ func main() {
 	close := func(v interface{}) error { return v.(net.Conn).Close() }
 
 	//创建一个连接池： 初始化5，最大链接30
-	p, err := pool.NewChannelPool(5, 30, factory, close)
+	poolConfig := &pool.PoolConfig{
+		InitialCap: 5,
+		MaxCap:     30,
+		Factory:    factory,
+		Close:      close,
+		//链接最大空闲时间，超过该时间的链接 将会关闭，可避免空闲时链接EOF，自动失效的问题
+		IdleTimeout: 15 * time.Second,
+	}
+	p, err := pool.NewChannelPool(poolConfig)
 	if err != nil {
 		fmt.Println("err=", err)
 	}
