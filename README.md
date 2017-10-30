@@ -4,7 +4,7 @@
 Golang 实现的连接池
 
 
-##功能：
+## 功能：
 
 - 连接池中连接类型为`interface{}`，使得更加通用
 - 链接的最大空闲时间，超时的链接将关闭丢弃，可避免空闲时链接自动失效问题
@@ -53,7 +53,7 @@ current := p.Len()
 ```
 
 
-####注:
+#### 注:
 该连接池参考 [https://github.com/fatih/pool](https://github.com/fatih/pool) 实现，改变以及增加原有的一些功能。
 
 
