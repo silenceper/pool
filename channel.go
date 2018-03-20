@@ -30,7 +30,7 @@ type channelPool struct {
 	factory     func() (interface{}, error)
 	close       func(interface{}) error
 	idleTimeout time.Duration
-	lifetime 	time.Duration
+	lifetime    time.Duration
 }
 
 type idleConn struct {
@@ -65,23 +65,16 @@ func NewChannelPool(poolConfig *PoolConfig) (Pool, error) {
 	return c, nil
 }
 
-//getConns 获取所有连接
-func (c *channelPool) getConns() chan *idleConn {
-	c.mu.Lock()
-	conns := c.conns
-	c.mu.Unlock()
-	return conns
-}
-
 //Get 从pool中取一个连接
 func (c *channelPool) Get() (interface{}, time.Time, error) {
-	conns := c.getConns()
-	if conns == nil {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.conns == nil {
 		return nil, time.Now(), ErrClosed
 	}
 	for {
 		select {
-		case wrapConn := <-conns:
+		case wrapConn := <-c.conns:
 			if wrapConn == nil {
 				return nil, time.Now(), ErrClosed
 			}
@@ -165,5 +158,5 @@ func (c *channelPool) Release() {
 
 //Len 连接池中已有的连接
 func (c *channelPool) Len() int {
-	return len(c.getConns())
+	return len(c.conns)
 }
