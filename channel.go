@@ -17,8 +17,10 @@ type PoolConfig struct {
 	Factory func() (interface{}, error)
 	//关闭链接的方法
 	Close func(interface{}) error
-	//链接最大空闲时间，超过该事件则将失效
+	//链接最大空闲时间，超过该事件则将失效，放回连接池会重新计算
 	IdleTimeout time.Duration
+	//链接从创建开始的总生存时间，取出放回不影响计时
+	Lifetime time.Duration
 }
 
 //channelPool 存放链接信息
@@ -28,11 +30,13 @@ type channelPool struct {
 	factory     func() (interface{}, error)
 	close       func(interface{}) error
 	idleTimeout time.Duration
+	lifetime    time.Duration
 }
 
 type idleConn struct {
 	conn interface{}
 	t    time.Time
+	b    time.Time
 }
 
 //NewChannelPool 初始化链接
@@ -46,6 +50,7 @@ func NewChannelPool(poolConfig *PoolConfig) (Pool, error) {
 		factory:     poolConfig.Factory,
 		close:       poolConfig.Close,
 		idleTimeout: poolConfig.IdleTimeout,
+		lifetime:    poolConfig.Lifetime,
 	}
 
 	for i := 0; i < poolConfig.InitialCap; i++ {
@@ -54,31 +59,24 @@ func NewChannelPool(poolConfig *PoolConfig) (Pool, error) {
 			c.Release()
 			return nil, fmt.Errorf("factory is not able to fill the pool: %s", err)
 		}
-		c.conns <- &idleConn{conn: conn, t: time.Now()}
+		c.conns <- &idleConn{conn: conn, t: time.Now(), b: time.Now()}
 	}
 
 	return c, nil
 }
 
-//getConns 获取所有连接
-func (c *channelPool) getConns() chan *idleConn {
-	c.mu.Lock()
-	conns := c.conns
-	c.mu.Unlock()
-	return conns
-}
-
 //Get 从pool中取一个连接
-func (c *channelPool) Get() (interface{}, error) {
-	conns := c.getConns()
-	if conns == nil {
-		return nil, ErrClosed
+func (c *channelPool) Get() (interface{}, time.Time, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.conns == nil {
+		return nil, time.Now(), ErrClosed
 	}
 	for {
 		select {
-		case wrapConn := <-conns:
+		case wrapConn := <-c.conns:
 			if wrapConn == nil {
-				return nil, ErrClosed
+				return nil, time.Now(), ErrClosed
 			}
 			//判断是否超时，超时则丢弃
 			if timeout := c.idleTimeout; timeout > 0 {
@@ -88,20 +86,28 @@ func (c *channelPool) Get() (interface{}, error) {
 					continue
 				}
 			}
-			return wrapConn.conn, nil
+			//判断是否超过lifetime
+			if timeout := c.lifetime; timeout > 0 {
+				if wrapConn.b.Add(timeout).Before(time.Now()) {
+					//丢弃并关闭该链接
+					c.Close(wrapConn.conn)
+					continue
+				}
+			}
+			return wrapConn.conn, wrapConn.b, nil
 		default:
 			conn, err := c.factory()
 			if err != nil {
-				return nil, err
+				return nil, time.Now(), err
 			}
 
-			return conn, nil
+			return conn, time.Now(), nil
 		}
 	}
 }
 
 //Put 将连接放回pool中
-func (c *channelPool) Put(conn interface{}) error {
+func (c *channelPool) Put(conn interface{}, birth time.Time) error {
 	if conn == nil {
 		return errors.New("connection is nil. rejecting")
 	}
@@ -114,7 +120,7 @@ func (c *channelPool) Put(conn interface{}) error {
 	}
 
 	select {
-	case c.conns <- &idleConn{conn: conn, t: time.Now()}:
+	case c.conns <- &idleConn{conn: conn, t: time.Now(), b: birth}:
 		return nil
 	default:
 		//连接池已满，直接关闭该链接
@@ -152,5 +158,5 @@ func (c *channelPool) Release() {
 
 //Len 连接池中已有的连接
 func (c *channelPool) Len() int {
-	return len(c.getConns())
+	return len(c.conns)
 }
