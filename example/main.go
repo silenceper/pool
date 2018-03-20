@@ -5,13 +5,13 @@ import (
 	"net"
 	"time"
 
-	"github.com/silenceper/pool"
+	"github.com/seraphliu/pool"
 )
 
 func main() {
 
 	//factory 创建连接的方法
-	factory := func() (interface{}, error) { return net.Dial("tcp", "127.0.0.1:80") }
+	factory := func() (interface{}, error) { return net.Dial("tcp", "192.168.99.100:30000") }
 
 	//close 关闭链接的方法
 	close := func(v interface{}) error { return v.(net.Conn).Close() }
@@ -24,6 +24,7 @@ func main() {
 		Close:      close,
 		//链接最大空闲时间，超过该时间的链接 将会关闭，可避免空闲时链接EOF，自动失效的问题
 		IdleTimeout: 15 * time.Second,
+		Lifetime:   18 * time.Second,
 	}
 	p, err := pool.NewChannelPool(poolConfig)
 	if err != nil {
@@ -31,18 +32,32 @@ func main() {
 	}
 
 	//从连接池中取得一个链接
-	v, err := p.Get()
+	v, b, err := p.Get()
 
 	//do something
 	//conn=v.(net.Conn)
 
 	//将链接放回连接池中
-	p.Put(v)
+	//p.Put(v, b)
 
 	//释放连接池中的所有链接
 	//p.Release()
 
 	//查看当前链接中的数量
 	current := p.Len()
-	fmt.Println("len=", current)
+	fmt.Println("len=", current, b)
+
+	//使用后的链接放回池中
+	time.Sleep(10 * time.Second)
+	p.Put(v, b)
+	v, b, err = p.Get()
+	current = p.Len()
+	fmt.Println("len=", current, b)
+
+	//Lifetime已超时，
+	time.Sleep(10 * time.Second)
+	p.Put(v, b)
+	v, b, err = p.Get()
+	current = p.Len()
+	fmt.Println("len=", current, b)
 }
