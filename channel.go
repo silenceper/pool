@@ -110,14 +110,18 @@ func (c *channelPool) Get() (interface{}, error) {
 			}
 			return wrapConn.conn, nil
 		default:
-			conn, err := c.factory()
-			if err != nil {
-				return nil, err
-			}
-
-			return conn, nil
+			return c.Connect()
 		}
 	}
+}
+
+//Conn 重新创建一个连接
+func (c *channelPool) Connect() (interface{}, error) {
+	conn, err := c.factory()
+	if err != nil {
+		return nil, err
+	}
+	return conn, nil
 }
 
 //Put 将连接放回pool中
