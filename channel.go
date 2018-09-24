@@ -117,6 +117,9 @@ func (c *channelPool) Get() (interface{}, error) {
 
 //Conn 重新创建一个连接
 func (c *channelPool) Connect() (interface{}, error) {
+	if c.factory == nil {
+		return errors.New("factory func is nil. rejecting")
+	}
 	conn, err := c.factory()
 	if err != nil {
 		return nil, err
@@ -150,6 +153,9 @@ func (c *channelPool) Put(conn interface{}) error {
 func (c *channelPool) Close(conn interface{}) error {
 	if conn == nil {
 		return errors.New("connection is nil. rejecting")
+	}
+	if c.close == nil {
+		return errors.New("close func is nil. rejecting")
 	}
 	return c.close(conn)
 }
