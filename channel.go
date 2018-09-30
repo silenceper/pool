@@ -110,14 +110,21 @@ func (c *channelPool) Get() (interface{}, error) {
 			}
 			return wrapConn.conn, nil
 		default:
-			conn, err := c.factory()
-			if err != nil {
-				return nil, err
-			}
-
-			return conn, nil
+			return c.Connect()
 		}
 	}
+}
+
+//Conn 重新创建一个连接
+func (c *channelPool) Connect() (interface{}, error) {
+	if c.factory == nil {
+		return nil, errors.New("factory func is nil. rejecting")
+	}
+	conn, err := c.factory()
+	if err != nil {
+		return nil, err
+	}
+	return conn, nil
 }
 
 //Put 将连接放回pool中
@@ -147,6 +154,9 @@ func (c *channelPool) Close(conn interface{}) error {
 	if conn == nil {
 		return errors.New("connection is nil. rejecting")
 	}
+	if c.close == nil {
+		return errors.New("close func is nil. rejecting")
+	}
 	return c.close(conn)
 }
 
@@ -154,6 +164,9 @@ func (c *channelPool) Close(conn interface{}) error {
 func (c *channelPool) Ping(conn interface{}) error {
 	if conn == nil {
 		return errors.New("connection is nil. rejecting")
+	}
+	if c.ping == nil {
+		return errors.New("ping func is nil. rejecting")
 	}
 	return c.ping(conn)
 }
@@ -166,6 +179,7 @@ func (c *channelPool) Release() {
 	c.factory = nil
 	closeFun := c.close
 	c.close = nil
+	c.ping = nil
 	c.mu.Unlock()
 
 	if conns == nil {
