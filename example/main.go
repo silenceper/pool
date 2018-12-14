@@ -2,32 +2,16 @@ package main
 
 import (
 	"fmt"
-	"github.com/silenceper/pool"
 	"net"
-	"os"
-	"os/signal"
-	"syscall"
 	"time"
+
+	"github.com/silenceper/pool"
 )
 
-const addr string = "127.0.0.1:80"
-
 func main() {
-	c := make(chan os.Signal)
-	signal.Notify(c, os.Interrupt, os.Kill, syscall.SIGUSR1, syscall.SIGUSR2)
-	go server()
-	//等待tcp server启动
-	time.Sleep(2 * time.Second)
-	client()
-	fmt.Println("使用: ctrl+c 退出服务")
-	<-c
-	fmt.Println("服务退出")
-}
-
-func client() {
 
 	//factory 创建连接的方法
-	factory := func() (interface{}, error) { return net.Dial("tcp", addr) }
+	factory := func() (interface{}, error) { return net.Dial("tcp", "127.0.0.1:80") }
 
 	//close 关闭连接的方法
 	close := func(v interface{}) error { return v.(net.Conn).Close() }
@@ -61,22 +45,4 @@ func client() {
 	//查看当前连接中的数量
 	current := p.Len()
 	fmt.Println("len=", current)
-}
-
-func server() {
-	l, err := net.Listen("tcp", addr)
-	if err != nil {
-		fmt.Println("Error listening: ", err)
-		os.Exit(1)
-	}
-	defer l.Close()
-	fmt.Println("Listening on ", addr)
-	for {
-		conn, err := l.Accept()
-		if err != nil {
-			fmt.Println("Error accepting: ", err)
-		}
-		fmt.Printf("Received message %s -> %s \n", conn.RemoteAddr(), conn.LocalAddr())
-		//go handleRequest(conn)
-	}
 }
