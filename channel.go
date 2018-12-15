@@ -147,6 +147,11 @@ func (c *channelPool) Close(conn interface{}) error {
 	if conn == nil {
 		return errors.New("connection is nil. rejecting")
 	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.close == nil {
+		return nil
+	}
 	return c.close(conn)
 }
 
