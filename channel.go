@@ -127,16 +127,18 @@ func (c *channelPool) Put(conn interface{}) error {
 	}
 
 	c.mu.Lock()
-	defer c.mu.Unlock()
 
 	if c.conns == nil {
+		c.mu.Unlock()
 		return c.Close(conn)
 	}
 
 	select {
 	case c.conns <- &idleConn{conn: conn, t: time.Now()}:
+		c.mu.Unlock()
 		return nil
 	default:
+		c.mu.Unlock()
 		//连接池已满，直接关闭该连接
 		return c.Close(conn)
 	}
