@@ -31,6 +31,7 @@ type channelPool struct {
 	close       func(interface{}) error
 	ping        func(interface{}) error
 	idleTimeout time.Duration
+	maxCap		int
 }
 
 type idleConn struct {
@@ -55,6 +56,7 @@ func NewChannelPool(poolConfig *PoolConfig) (Pool, error) {
 		factory:     poolConfig.Factory,
 		close:       poolConfig.Close,
 		idleTimeout: poolConfig.IdleTimeout,
+		maxCap:		 poolConfig.MaxCap,
 	}
 
 	if poolConfig.Ping != nil {
@@ -73,7 +75,7 @@ func NewChannelPool(poolConfig *PoolConfig) (Pool, error) {
 	return c, nil
 }
 
-//getConns 获取所有连接
+//getConns 获取连接存储通道
 func (c *channelPool) getConns() chan *idleConn {
 	c.mu.Lock()
 	conns := c.conns
@@ -95,6 +97,7 @@ func (c *channelPool) Get() (interface{}, error) {
 			}
 			//判断是否超时，超时则丢弃
 			if timeout := c.idleTimeout; timeout > 0 {
+				// 追加连接超时时间，保持活跃并判断如超时就关闭连接
 				if wrapConn.t.Add(timeout).Before(time.Now()) {
 					//丢弃并关闭该连接
 					c.Close(wrapConn.conn)
@@ -110,11 +113,11 @@ func (c *channelPool) Get() (interface{}, error) {
 			}
 			return wrapConn.conn, nil
 		default:
+			// 通道中已经没有连接，则重新获取一个新的连接
 			conn, err := c.factory()
 			if err != nil {
 				return nil, err
 			}
-
 			return conn, nil
 		}
 	}
@@ -131,6 +134,11 @@ func (c *channelPool) Put(conn interface{}) error {
 
 	if c.conns == nil {
 		return c.Close(conn)
+	}
+	if len(c.conns) >= c.maxCap {
+		//当连接通道到达配置的最大连接数则直接关闭连接并返回一个异常，防止写入通道造成阻塞
+		c.close(conn)
+		return errors.New("connect overflow the max cap")
 	}
 
 	select {
