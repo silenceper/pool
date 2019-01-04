@@ -57,6 +57,9 @@ current := p.Len()
 
 ```
 
+## 实现流程
+![avatar](https://s2.ax1x.com/2019/01/04/FTrqDf.png)
+
 
 #### 注:
 该连接池参考 [https://github.com/fatih/pool](https://github.com/fatih/pool) 实现，改变以及增加原有的一些功能。
