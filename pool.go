@@ -7,7 +7,7 @@ var (
 	ErrClosed = errors.New("pool is closed")
 )
 
-//Pool 基本方法
+// Pool 基本方法
 type Pool interface {
 	Get() (interface{}, error)
 
