@@ -33,7 +33,7 @@ func client() {
 	close := func(v interface{}) error { return v.(net.Conn).Close() }
 
 	//创建一个连接池： 初始化5，最大连接30
-	poolConfig := &pool.PoolConfig{
+	poolConfig := &pool.Config {
 		InitialCap: 5,
 		MaxCap:     30,
 		Factory:    factory,

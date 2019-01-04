@@ -7,8 +7,8 @@ import (
 	"time"
 )
 
-// PoolConfig 连接池相关配置
-type PoolConfig struct {
+// Config 连接池相关配置
+type Config struct {
 	//连接池中拥有的最小连接数
 	InitialCap int
 	//连接池中拥有的最大的连接数
@@ -40,7 +40,7 @@ type idleConn struct {
 }
 
 //NewChannelPool 初始化连接
-func NewChannelPool(poolConfig *PoolConfig) (Pool, error) {
+func NewChannelPool(poolConfig *Config) (Pool, error) {
 	if poolConfig.InitialCap < 0 || poolConfig.MaxCap <= 0 || poolConfig.InitialCap > poolConfig.MaxCap {
 		return nil, errors.New("invalid capacity settings")
 	}
