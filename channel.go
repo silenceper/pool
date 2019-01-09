@@ -171,6 +171,7 @@ func (c *channelPool) Release() {
 	conns := c.conns
 	c.conns = nil
 	c.factory = nil
+	c.ping = nil
 	closeFun := c.close
 	c.close = nil
 	c.mu.Unlock()
