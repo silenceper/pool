@@ -110,7 +110,13 @@ func (c *channelPool) Get() (interface{}, error) {
 			}
 			return wrapConn.conn, nil
 		default:
+			c.mu.Lock()
+			if c.factory == nil {
+				c.mu.Unlock()
+				continue
+			}
 			conn, err := c.factory()
+			c.mu.Unlock()
 			if err != nil {
 				return nil, err
 			}
