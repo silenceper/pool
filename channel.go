@@ -98,6 +98,12 @@ func (c *channelPool) Get() (interface{}, error) {
 				if wrapConn.t.Add(timeout).Before(time.Now()) {
 					//丢弃并关闭该连接
 					c.Close(wrapConn.conn)
+					// 關閉連結後，向connect channel傳入一個新的連結
+					conn, err := c.factory()
+					if err != nil {
+						return nil, err
+					}
+					c.conns <- &idleConn{conn: conn, t: time.Now()}
 					continue
 				}
 			}
@@ -109,19 +115,6 @@ func (c *channelPool) Get() (interface{}, error) {
 				}
 			}
 			return wrapConn.conn, nil
-		default:
-			c.mu.Lock()
-			if c.factory == nil {
-				c.mu.Unlock()
-				continue
-			}
-			conn, err := c.factory()
-			c.mu.Unlock()
-			if err != nil {
-				return nil, err
-			}
-
-			return conn, nil
 		}
 	}
 }
