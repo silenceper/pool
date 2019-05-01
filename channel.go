@@ -83,6 +83,7 @@ func (c *channelPool) getConns() chan *idleConn {
 
 // Get 从pool中取一个连接
 func (c *channelPool) Get() (interface{}, error) {
+	timeoutC := time.After(c.idleTimeout)
 	conns := c.getConns()
 	if conns == nil {
 		return nil, ErrClosed
@@ -115,6 +116,8 @@ func (c *channelPool) Get() (interface{}, error) {
 				}
 			}
 			return wrapConn.conn, nil
+		case <-timeoutC:
+			return nil, ErrTimeoutClosed
 		}
 	}
 }
