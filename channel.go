@@ -6,7 +6,10 @@ import (
 	"sync"
 	"time"
 )
-
+var (
+	MaxActiveConnReached = errors.New("MaxActiveConnReached")
+	GetConnTimeOut = errors.New("GetConnTimeOut")
+)
 // Config 连接池相关配置
 type Config struct {
 	//连接池中拥有的最小连接数
@@ -21,16 +24,19 @@ type Config struct {
 	Ping func(interface{}) error
 	//连接最大空闲时间，超过该事件则将失效
 	IdleTimeout time.Duration
+	WaitTimeOut time.Duration
 }
 
 // channelPool 存放连接信息
 type channelPool struct {
-	mu          sync.Mutex
-	conns       chan *idleConn
-	factory     func() (interface{}, error)
-	close       func(interface{}) error
-	ping        func(interface{}) error
-	idleTimeout time.Duration
+	mu                       sync.RWMutex
+	conns                    chan *idleConn
+	factory                  func() (interface{}, error)
+	close                    func(interface{}) error
+	ping                     func(interface{}) error
+	idleTimeout, waitTimeOut time.Duration
+	maxActive                int
+	openingConns             int
 }
 
 type idleConn struct {
@@ -55,6 +61,8 @@ func NewChannelPool(poolConfig *Config) (Pool, error) {
 		factory:     poolConfig.Factory,
 		close:       poolConfig.Close,
 		idleTimeout: poolConfig.IdleTimeout,
+		waitTimeOut: poolConfig.WaitTimeOut,
+		maxActive:   poolConfig.MaxCap,
 	}
 
 	if poolConfig.Ping != nil {
@@ -87,6 +95,7 @@ func (c *channelPool) Get() (interface{}, error) {
 	if conns == nil {
 		return nil, ErrClosed
 	}
+	timeOut := time.After(c.waitTimeOut)
 	for {
 		select {
 		case wrapConn := <-conns:
@@ -104,23 +113,27 @@ func (c *channelPool) Get() (interface{}, error) {
 			//判断是否失效，失效则丢弃，如果用户没有设定 ping 方法，就不检查
 			if c.ping != nil {
 				if err := c.Ping(wrapConn.conn); err != nil {
-					fmt.Println("conn is not able to be connected: ", err)
+					c.Close(wrapConn.conn)
 					continue
 				}
 			}
 			return wrapConn.conn, nil
+		case <-timeOut:
+			return nil, GetConnTimeOut
 		default:
 			c.mu.Lock()
+			defer c.mu.Unlock()
+			if c.openingConns >= c.maxActive {
+				return nil ,MaxActiveConnReached
+			}
 			if c.factory == nil {
-				c.mu.Unlock()
-				continue
+				return nil, ErrClosed
 			}
 			conn, err := c.factory()
-			c.mu.Unlock()
 			if err != nil {
 				return nil, err
 			}
-
+			c.openingConns++
 			return conn, nil
 		}
 	}
@@ -160,6 +173,7 @@ func (c *channelPool) Close(conn interface{}) error {
 	if c.close == nil {
 		return nil
 	}
+	c.openingConns--
 	return c.close(conn)
 }
 
