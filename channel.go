@@ -10,15 +10,17 @@ import (
 )
 
 var (
-	MaxActiveConnReached = errors.New("MaxActiveConnReached")
+	ErrMaxActiveConnReached = errors.New("MaxActiveConnReached") // 连接池超限
 )
 
 // Config 连接池相关配置
 type Config struct {
 	//连接池中拥有的最小连接数
 	InitialCap int
-	//连接池中拥有的最大的连接数
+	//最大并发存活连接数
 	MaxCap int
+	//最大空闲连接
+	MaxIdle int
 	//生成连接的方法
 	Factory func() (interface{}, error)
 	//关闭连接的方法
@@ -48,7 +50,7 @@ type idleConn struct {
 
 // NewChannelPool 初始化连接
 func NewChannelPool(poolConfig *Config) (Pool, error) {
-	if poolConfig.InitialCap < 0 || poolConfig.MaxCap <= 0 || poolConfig.InitialCap > poolConfig.MaxCap {
+	if ! (poolConfig.InitialCap <= poolConfig.MaxIdle && poolConfig.MaxCap >= poolConfig.MaxIdle && poolConfig.InitialCap >= 0 ){
 		return nil, errors.New("invalid capacity settings")
 	}
 	if poolConfig.Factory == nil {
@@ -59,7 +61,7 @@ func NewChannelPool(poolConfig *Config) (Pool, error) {
 	}
 
 	c := &channelPool{
-		conns:        make(chan *idleConn, poolConfig.MaxCap),
+		conns:        make(chan *idleConn, poolConfig.MaxIdle),
 		factory:      poolConfig.Factory,
 		close:        poolConfig.Close,
 		idleTimeout:  poolConfig.IdleTimeout,
@@ -124,7 +126,7 @@ func (c *channelPool) Get() (interface{}, error) {
 			log.Debugf("openConn %v %v", c.openingConns, c.maxActive)
 			defer c.mu.Unlock()
 			if c.openingConns >= c.maxActive {
-				return nil, MaxActiveConnReached
+				return nil, ErrMaxActiveConnReached
 			}
 			if c.factory == nil {
 				return nil, ErrClosed
@@ -157,6 +159,7 @@ func (c *channelPool) Put(conn interface{}) error {
 		c.mu.Unlock()
 		return nil
 	default:
+		c.openingConns--
 		c.mu.Unlock()
 		//连接池已满，直接关闭该连接
 		return c.Close(conn)

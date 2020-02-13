@@ -12,6 +12,7 @@ import (
 
 var (
 	InitialCap = 5
+	MaxIdleCap = 10
 	MaximumCap = 100
 	network    = "tcp"
 	address    = "127.0.0.1:7777"
@@ -90,14 +91,15 @@ func TestPool_Get(t *testing.T) {
 	}
 
 	_, err = p.Get()
-	if err != MaxActiveConnReached {
+	if err != ErrMaxActiveConnReached {
 		t.Errorf("Get error: %s", err)
 	}
 
 }
 
 func TestPool_Put(t *testing.T) {
-	pconf := Config{InitialCap: InitialCap, MaxCap: MaximumCap, Factory: factory, Close: closeFac, IdleTimeout: time.Second * 20}
+	pconf := Config{InitialCap: InitialCap, MaxCap: MaximumCap, Factory: factory, Close: closeFac, IdleTimeout: time.Second * 20,
+		MaxIdle:MaxIdleCap}
 	p, err := NewChannelPool(&pconf)
 	if err != nil {
 		t.Fatal(err)
@@ -116,7 +118,7 @@ func TestPool_Put(t *testing.T) {
 		p.Put(conn)
 	}
 
-	if p.Len() != MaximumCap {
+	if p.Len() != MaxIdleCap {
 		t.Errorf("Put error len. Expecting %d, got %d",
 			1, p.Len())
 	}
@@ -252,7 +254,8 @@ func TestPoolConcurrent2(t *testing.T) {
 //}
 
 func newChannelPool() (Pool, error) {
-	pconf := Config{InitialCap: InitialCap, MaxCap: MaximumCap, Factory: factory, Close: closeFac, IdleTimeout: time.Second * 20}
+	pconf := Config{InitialCap: InitialCap, MaxCap: MaximumCap, Factory: factory, Close: closeFac, IdleTimeout: time.Second * 20,
+		MaxIdle:MaxIdleCap}
 	return NewChannelPool(&pconf)
 }
 
