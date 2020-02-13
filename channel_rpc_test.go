@@ -98,7 +98,7 @@ func TestPool_Get(t *testing.T) {
 }
 
 func TestPool_Put(t *testing.T) {
-	pconf := Config{InitialCap:InitialCap,MaxCap:MaximumCap,Factory:factory,Close:closeFac,IdleTimeout:time.Second*20,WaitTimeOut:time.Second*2}
+	pconf := Config{InitialCap:InitialCap,MaxCap:MaximumCap,Factory:factory,Close:closeFac,IdleTimeout:time.Second*20}
 	p,err := NewChannelPool(&pconf)
 	if err != nil {
 		t.Fatal(err)
@@ -253,7 +253,7 @@ func TestPoolConcurrent2(t *testing.T) {
 //}
 
 func newChannelPool() (Pool, error) {
-	pconf := Config{InitialCap:InitialCap,MaxCap:MaximumCap,Factory:factory,Close:closeFac,IdleTimeout:time.Second*20,WaitTimeOut:time.Second*2}
+	pconf := Config{InitialCap:InitialCap,MaxCap:MaximumCap,Factory:factory,Close:closeFac,IdleTimeout:time.Second*20}
 	return NewChannelPool(&pconf)
 }
 
