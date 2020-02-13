@@ -25,7 +25,6 @@ type Config struct {
 	Ping func(interface{}) error
 	//连接最大空闲时间，超过该事件则将失效
 	IdleTimeout time.Duration
-	WaitTimeOut time.Duration
 }
 
 // channelPool 存放连接信息
@@ -62,7 +61,6 @@ func NewChannelPool(poolConfig *Config) (Pool, error) {
 		factory:     poolConfig.Factory,
 		close:       poolConfig.Close,
 		idleTimeout: poolConfig.IdleTimeout,
-		waitTimeOut: poolConfig.WaitTimeOut,
 		maxActive:   poolConfig.MaxCap,
 		openingConns:poolConfig.InitialCap,
 	}
