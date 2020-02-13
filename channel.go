@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"sync"
 	"time"
+	log "github.com/sirupsen/logrus"
+	//"reflect"
 )
 var (
 	MaxActiveConnReached = errors.New("MaxActiveConnReached")
-	GetConnTimeOut = errors.New("GetConnTimeOut")
 )
 // Config 连接池相关配置
 type Config struct {
@@ -63,6 +64,7 @@ func NewChannelPool(poolConfig *Config) (Pool, error) {
 		idleTimeout: poolConfig.IdleTimeout,
 		waitTimeOut: poolConfig.WaitTimeOut,
 		maxActive:   poolConfig.MaxCap,
+		openingConns:poolConfig.InitialCap,
 	}
 
 	if poolConfig.Ping != nil {
@@ -95,7 +97,6 @@ func (c *channelPool) Get() (interface{}, error) {
 	if conns == nil {
 		return nil, ErrClosed
 	}
-	timeOut := time.After(c.waitTimeOut)
 	for {
 		select {
 		case wrapConn := <-conns:
@@ -118,10 +119,9 @@ func (c *channelPool) Get() (interface{}, error) {
 				}
 			}
 			return wrapConn.conn, nil
-		case <-timeOut:
-			return nil, GetConnTimeOut
 		default:
 			c.mu.Lock()
+			log.Debugf("openConn %v %v",c.openingConns,c.maxActive)
 			defer c.mu.Unlock()
 			if c.openingConns >= c.maxActive {
 				return nil ,MaxActiveConnReached
@@ -202,6 +202,7 @@ func (c *channelPool) Release() {
 
 	close(conns)
 	for wrapConn := range conns {
+		//log.Printf("Type %v\n",reflect.TypeOf(wrapConn.conn))
 		closeFun(wrapConn.conn)
 	}
 }
