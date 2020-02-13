@@ -3,14 +3,16 @@ package pool
 import (
 	"errors"
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"sync"
 	"time"
-	log "github.com/sirupsen/logrus"
 	//"reflect"
 )
+
 var (
 	MaxActiveConnReached = errors.New("MaxActiveConnReached")
 )
+
 // Config 连接池相关配置
 type Config struct {
 	//连接池中拥有的最小连接数
@@ -57,12 +59,12 @@ func NewChannelPool(poolConfig *Config) (Pool, error) {
 	}
 
 	c := &channelPool{
-		conns:       make(chan *idleConn, poolConfig.MaxCap),
-		factory:     poolConfig.Factory,
-		close:       poolConfig.Close,
-		idleTimeout: poolConfig.IdleTimeout,
-		maxActive:   poolConfig.MaxCap,
-		openingConns:poolConfig.InitialCap,
+		conns:        make(chan *idleConn, poolConfig.MaxCap),
+		factory:      poolConfig.Factory,
+		close:        poolConfig.Close,
+		idleTimeout:  poolConfig.IdleTimeout,
+		maxActive:    poolConfig.MaxCap,
+		openingConns: poolConfig.InitialCap,
 	}
 
 	if poolConfig.Ping != nil {
@@ -119,10 +121,10 @@ func (c *channelPool) Get() (interface{}, error) {
 			return wrapConn.conn, nil
 		default:
 			c.mu.Lock()
-			log.Debugf("openConn %v %v",c.openingConns,c.maxActive)
+			log.Debugf("openConn %v %v", c.openingConns, c.maxActive)
 			defer c.mu.Unlock()
 			if c.openingConns >= c.maxActive {
-				return nil ,MaxActiveConnReached
+				return nil, MaxActiveConnReached
 			}
 			if c.factory == nil {
 				return nil, ErrClosed

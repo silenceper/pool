@@ -3,11 +3,11 @@ package pool
 import (
 	"math/rand"
 	"net"
+	"net/http"
+	"net/rpc"
 	"sync"
 	"testing"
 	"time"
-	"net/rpc"
-	"net/http"
 )
 
 var (
@@ -16,10 +16,10 @@ var (
 	network    = "tcp"
 	address    = "127.0.0.1:7777"
 	//factory    = func() (interface{}, error) { return net.Dial(network, address) }
-	factory = func()(interface{},error){
-		return rpc.DialHTTP("tcp",address)
+	factory = func() (interface{}, error) {
+		return rpc.DialHTTP("tcp", address)
 	}
-	closeFac = func(v interface{})error {
+	closeFac = func(v interface{}) error {
 		nc := v.(*rpc.Client)
 		return nc.Close()
 	}
@@ -43,7 +43,7 @@ func TestNew(t *testing.T) {
 func TestPool_Get_Impl(t *testing.T) {
 	p, _ := newChannelPool()
 	defer p.Release()
-	
+
 	conn, err := p.Get()
 	if err != nil {
 		t.Errorf("Get error: %s", err)
@@ -94,12 +94,11 @@ func TestPool_Get(t *testing.T) {
 		t.Errorf("Get error: %s", err)
 	}
 
-
 }
 
 func TestPool_Put(t *testing.T) {
-	pconf := Config{InitialCap:InitialCap,MaxCap:MaximumCap,Factory:factory,Close:closeFac,IdleTimeout:time.Second*20}
-	p,err := NewChannelPool(&pconf)
+	pconf := Config{InitialCap: InitialCap, MaxCap: MaximumCap, Factory: factory, Close: closeFac, IdleTimeout: time.Second * 20}
+	p, err := NewChannelPool(&pconf)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,7 +124,6 @@ func TestPool_Put(t *testing.T) {
 	p.Release() // close pool
 
 }
-
 
 func TestPool_UsedCapacity(t *testing.T) {
 	p, _ := newChannelPool()
@@ -190,11 +188,11 @@ func TestPoolConcurrent(t *testing.T) {
 
 func TestPoolWriteRead(t *testing.T) {
 	//p, _ := NewChannelPool(0, 30, factory)
-	p,_ := newChannelPool()
+	p, _ := newChannelPool()
 	conn, _ := p.Get()
 	cli := conn.(*rpc.Client)
 	var resp int
-	err := cli.Call("Arith.Multiply",Args{1,2},&resp)
+	err := cli.Call("Arith.Multiply", Args{1, 2}, &resp)
 	if err != nil {
 		t.Error(err)
 	}
@@ -205,7 +203,7 @@ func TestPoolWriteRead(t *testing.T) {
 
 func TestPoolConcurrent2(t *testing.T) {
 	//p, _ := NewChannelPool(0, 30, factory)
-	p,_ := newChannelPool()
+	p, _ := newChannelPool()
 
 	var wg sync.WaitGroup
 
@@ -233,6 +231,7 @@ func TestPoolConcurrent2(t *testing.T) {
 
 	wg.Wait()
 }
+
 //
 //func TestPoolConcurrent3(t *testing.T) {
 //	p, _ := NewChannelPool(0, 1, factory)
@@ -253,7 +252,7 @@ func TestPoolConcurrent2(t *testing.T) {
 //}
 
 func newChannelPool() (Pool, error) {
-	pconf := Config{InitialCap:InitialCap,MaxCap:MaximumCap,Factory:factory,Close:closeFac,IdleTimeout:time.Second*20}
+	pconf := Config{InitialCap: InitialCap, MaxCap: MaximumCap, Factory: factory, Close: closeFac, IdleTimeout: time.Second * 20}
 	return NewChannelPool(&pconf)
 }
 
