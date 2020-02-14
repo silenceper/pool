@@ -10,7 +10,8 @@ import (
 )
 
 var (
-	ErrMaxActiveConnReached = errors.New("MaxActiveConnReached") // 连接池超限
+	//ErrMaxActiveConnReached 连接池超限
+	ErrMaxActiveConnReached = errors.New("MaxActiveConnReached")
 )
 
 // Config 连接池相关配置
@@ -159,7 +160,6 @@ func (c *channelPool) Put(conn interface{}) error {
 		c.mu.Unlock()
 		return nil
 	default:
-		c.openingConns--
 		c.mu.Unlock()
 		//连接池已满，直接关闭该连接
 		return c.Close(conn)
