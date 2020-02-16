@@ -3,16 +3,25 @@ package pool
 import (
 	"errors"
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"sync"
 	"time"
+	//"reflect"
+)
+
+var (
+	//ErrMaxActiveConnReached 连接池超限
+	ErrMaxActiveConnReached = errors.New("MaxActiveConnReached")
 )
 
 // Config 连接池相关配置
 type Config struct {
 	//连接池中拥有的最小连接数
 	InitialCap int
-	//连接池中拥有的最大的连接数
+	//最大并发存活连接数
 	MaxCap int
+	//最大空闲连接
+	MaxIdle int
 	//生成连接的方法
 	Factory func() (interface{}, error)
 	//关闭连接的方法
@@ -25,12 +34,14 @@ type Config struct {
 
 // channelPool 存放连接信息
 type channelPool struct {
-	mu          sync.Mutex
-	conns       chan *idleConn
-	factory     func() (interface{}, error)
-	close       func(interface{}) error
-	ping        func(interface{}) error
-	idleTimeout time.Duration
+	mu                       sync.RWMutex
+	conns                    chan *idleConn
+	factory                  func() (interface{}, error)
+	close                    func(interface{}) error
+	ping                     func(interface{}) error
+	idleTimeout, waitTimeOut time.Duration
+	maxActive                int
+	openingConns             int
 }
 
 type idleConn struct {
@@ -40,7 +51,7 @@ type idleConn struct {
 
 // NewChannelPool 初始化连接
 func NewChannelPool(poolConfig *Config) (Pool, error) {
-	if poolConfig.InitialCap < 0 || poolConfig.MaxCap <= 0 || poolConfig.InitialCap > poolConfig.MaxCap {
+	if ! (poolConfig.InitialCap <= poolConfig.MaxIdle && poolConfig.MaxCap >= poolConfig.MaxIdle && poolConfig.InitialCap >= 0 ){
 		return nil, errors.New("invalid capacity settings")
 	}
 	if poolConfig.Factory == nil {
@@ -51,10 +62,12 @@ func NewChannelPool(poolConfig *Config) (Pool, error) {
 	}
 
 	c := &channelPool{
-		conns:       make(chan *idleConn, poolConfig.MaxCap),
-		factory:     poolConfig.Factory,
-		close:       poolConfig.Close,
-		idleTimeout: poolConfig.IdleTimeout,
+		conns:        make(chan *idleConn, poolConfig.MaxIdle),
+		factory:      poolConfig.Factory,
+		close:        poolConfig.Close,
+		idleTimeout:  poolConfig.IdleTimeout,
+		maxActive:    poolConfig.MaxCap,
+		openingConns: poolConfig.InitialCap,
 	}
 
 	if poolConfig.Ping != nil {
@@ -104,23 +117,26 @@ func (c *channelPool) Get() (interface{}, error) {
 			//判断是否失效，失效则丢弃，如果用户没有设定 ping 方法，就不检查
 			if c.ping != nil {
 				if err := c.Ping(wrapConn.conn); err != nil {
-					fmt.Println("conn is not able to be connected: ", err)
+					c.Close(wrapConn.conn)
 					continue
 				}
 			}
 			return wrapConn.conn, nil
 		default:
 			c.mu.Lock()
+			log.Debugf("openConn %v %v", c.openingConns, c.maxActive)
+			defer c.mu.Unlock()
+			if c.openingConns >= c.maxActive {
+				return nil, ErrMaxActiveConnReached
+			}
 			if c.factory == nil {
-				c.mu.Unlock()
-				continue
+				return nil, ErrClosed
 			}
 			conn, err := c.factory()
-			c.mu.Unlock()
 			if err != nil {
 				return nil, err
 			}
-
+			c.openingConns++
 			return conn, nil
 		}
 	}
@@ -160,6 +176,7 @@ func (c *channelPool) Close(conn interface{}) error {
 	if c.close == nil {
 		return nil
 	}
+	c.openingConns--
 	return c.close(conn)
 }
 
@@ -188,6 +205,7 @@ func (c *channelPool) Release() {
 
 	close(conns)
 	for wrapConn := range conns {
+		//log.Printf("Type %v\n",reflect.TypeOf(wrapConn.conn))
 		closeFun(wrapConn.conn)
 	}
 }
