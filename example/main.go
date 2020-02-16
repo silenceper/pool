@@ -2,15 +2,16 @@ package main
 
 import (
 	"fmt"
-	"github.com/silenceper/pool"
 	"net"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/silenceper/pool"
 )
 
-const addr string = "127.0.0.1:80"
+const addr string = "127.0.0.1:8080"
 
 func main() {
 	c := make(chan os.Signal)
@@ -32,10 +33,11 @@ func client() {
 	//close 关闭连接的方法
 	close := func(v interface{}) error { return v.(net.Conn).Close() }
 
-	//创建一个连接池： 初始化5，最大连接30
+	//创建一个连接池： 初始化2，最大连接5，空闲连接数是4
 	poolConfig := &pool.Config{
-		InitialCap: 5,
-		MaxCap:     30,
+		InitialCap: 2,
+		MaxIdle:    4,
+		MaxCap:     5,
 		Factory:    factory,
 		Close:      close,
 		//连接最大空闲时间，超过该时间的连接 将会关闭，可避免空闲时连接EOF，自动失效的问题
