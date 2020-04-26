@@ -32,6 +32,10 @@ type Config struct {
 	IdleTimeout time.Duration
 }
 
+type connReq struct {
+	idleConn *idleConn
+}
+
 // channelPool 存放连接信息
 type channelPool struct {
 	mu                       sync.RWMutex
@@ -42,6 +46,7 @@ type channelPool struct {
 	idleTimeout, waitTimeOut time.Duration
 	maxActive                int
 	openingConns             int
+	connReqs                 []chan connReq
 }
 
 type idleConn struct {
@@ -51,7 +56,7 @@ type idleConn struct {
 
 // NewChannelPool 初始化连接
 func NewChannelPool(poolConfig *Config) (Pool, error) {
-	if ! (poolConfig.InitialCap <= poolConfig.MaxIdle && poolConfig.MaxCap >= poolConfig.MaxIdle && poolConfig.InitialCap >= 0 ){
+	if !(poolConfig.InitialCap <= poolConfig.MaxIdle && poolConfig.MaxCap >= poolConfig.MaxIdle && poolConfig.InitialCap >= 0) {
 		return nil, errors.New("invalid capacity settings")
 	}
 	if poolConfig.Factory == nil {
@@ -125,18 +130,34 @@ func (c *channelPool) Get() (interface{}, error) {
 		default:
 			c.mu.Lock()
 			log.Debugf("openConn %v %v", c.openingConns, c.maxActive)
-			defer c.mu.Unlock()
 			if c.openingConns >= c.maxActive {
-				return nil, ErrMaxActiveConnReached
+				req := make(chan connReq, 1)
+				c.connReqs = append(c.connReqs, req)
+				c.mu.Unlock()
+				ret, ok := <-req
+				if !ok {
+					return nil, ErrMaxActiveConnReached
+				}
+				if timeout := c.idleTimeout; timeout > 0 {
+					if ret.idleConn.t.Add(timeout).Before(time.Now()) {
+						//丢弃并关闭该连接
+						c.Close(ret.idleConn.conn)
+						continue
+					}
+				}
+				return ret.idleConn.conn, nil
 			}
 			if c.factory == nil {
+				c.mu.Unlock()
 				return nil, ErrClosed
 			}
 			conn, err := c.factory()
 			if err != nil {
+				c.mu.Unlock()
 				return nil, err
 			}
 			c.openingConns++
+			c.mu.Unlock()
 			return conn, nil
 		}
 	}
@@ -155,14 +176,25 @@ func (c *channelPool) Put(conn interface{}) error {
 		return c.Close(conn)
 	}
 
-	select {
-	case c.conns <- &idleConn{conn: conn, t: time.Now()}:
+	if l := len(c.connReqs); l > 0 {
+		req := c.connReqs[0]
+		copy(c.connReqs, c.connReqs[1:])
+		c.connReqs = c.connReqs[:l-1]
+		req <- connReq{
+			idleConn: &idleConn{conn: conn, t: time.Now()},
+		}
 		c.mu.Unlock()
 		return nil
-	default:
-		c.mu.Unlock()
-		//连接池已满，直接关闭该连接
-		return c.Close(conn)
+	} else {
+		select {
+		case c.conns <- &idleConn{conn: conn, t: time.Now()}:
+			c.mu.Unlock()
+			return nil
+		default:
+			c.mu.Unlock()
+			//连接池已满，直接关闭该连接
+			return c.Close(conn)
+		}
 	}
 }
 
