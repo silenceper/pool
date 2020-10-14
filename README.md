@@ -9,11 +9,10 @@ A golang universal network connection pool.
 
 ## Feature：
 
-- The connection type in the connection pool is `interface{}`, making it more versatile
-- The connection supports setting the maximum idle time, the timeout connection will be closed and discarded, which can avoid the problem of automatic connection failure when idle
- 
+- More versatile, The connection type in the connection pool is `interface{}`, making it more versatile
+- More configurable, The connection supports setting the maximum idle time, the timeout connection will be closed and discarded, which can avoid the problem of automatic connection failure when idle
 - Support user setting `ping` method, used to check the connectivity of connection, invalid connection will be discarded
-- When the connection pool is full, support for connection waiting (like the go db connection pool)
+- Support connection waiting, When the connection pool is full, support for connection waiting (like the go db connection pool)
 
 ## Basic Usage:
 
