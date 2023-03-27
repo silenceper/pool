@@ -1,6 +1,7 @@
 package pool
 
 import (
+	"errors"
 	"math/rand"
 	"net"
 	"net/http"
@@ -8,6 +9,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 )
 
 var (
@@ -18,16 +21,22 @@ var (
 	address    = "127.0.0.1:7777"
 	//factory    = func() (interface{}, error) { return net.Dial(network, address) }
 	factory = func() (interface{}, error) {
-		return rpc.DialHTTP("tcp", address)
+		return rpc.DialHTTP(network, address)
 	}
 	closeFac = func(v interface{}) error {
 		nc := v.(*rpc.Client)
 		return nc.Close()
 	}
+	pingFac = func(v interface{}) error {
+		nc := v.(*rpc.Client)
+		var ans int
+		return nc.Call("Arith.Multiply", Args{A: 1, B: 2}, &ans)
+	}
 )
 
 func init() {
 	// used for factory function
+	log.SetLevel(log.InfoLevel)
 	go rpcServer()
 	time.Sleep(time.Millisecond * 300) // wait until tcp server has been settled
 
@@ -73,7 +82,7 @@ func TestPool_Get(t *testing.T) {
 
 	// get them all
 	var wg sync.WaitGroup
-	for i := 0; i < (MaximumCap - 1); i++ {
+	for i := 0; i < (MaximumCap - 2); i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -90,8 +99,17 @@ func TestPool_Get(t *testing.T) {
 			(InitialCap - 1), p.Len())
 	}
 
+	go func() {
+		c, err := p.Get()
+		defer p.Put(c)
+		time.Sleep(2 * time.Second)
+		if err != nil {
+			t.Errorf("Get error: %s", err)
+		}
+	}()
+	time.Sleep(1 * time.Second)
 	_, err = p.Get()
-	if err != ErrMaxActiveConnReached {
+	if err != nil {
 		t.Errorf("Get error: %s", err)
 	}
 
@@ -99,7 +117,7 @@ func TestPool_Get(t *testing.T) {
 
 func TestPool_Put(t *testing.T) {
 	pconf := Config{InitialCap: InitialCap, MaxCap: MaximumCap, Factory: factory, Close: closeFac, IdleTimeout: time.Second * 20,
-		MaxIdle:MaxIdleCap}
+		MaxIdle: MaxIdleCap}
 	p, err := NewChannelPool(&pconf)
 	if err != nil {
 		t.Fatal(err)
@@ -234,6 +252,58 @@ func TestPoolConcurrent2(t *testing.T) {
 	wg.Wait()
 }
 
+func TestInValidConfig(t *testing.T) {
+	pconf := Config{InitialCap: MaxIdleCap + 1, MaxCap: MaximumCap, Factory: factory, Close: closeFac, IdleTimeout: time.Second * 20,
+		MaxIdle: MaxIdleCap, Ping: pingFac}
+	if _, err := NewChannelPool(&pconf); err != ErrInvalidCapSetting {
+		t.Errorf("err should be %v, but got %v", ErrInvalidCapSetting, err)
+	}
+	pconf = Config{InitialCap: MaximumCap + 1, MaxCap: MaximumCap, Factory: factory, Close: closeFac, IdleTimeout: time.Second * 20,
+		MaxIdle: MaxIdleCap, Ping: pingFac}
+	if _, err := NewChannelPool(&pconf); err != ErrInvalidCapSetting {
+		t.Errorf("err should be %v, but got %v", ErrInvalidCapSetting, err)
+	}
+	pconf = Config{InitialCap: -1, MaxCap: MaximumCap, Factory: factory, Close: closeFac, IdleTimeout: time.Second * 20,
+		MaxIdle: MaxIdleCap, Ping: pingFac}
+	if _, err := NewChannelPool(&pconf); err != ErrInvalidCapSetting {
+		t.Errorf("err should be %v, but got %v", ErrInvalidCapSetting, err)
+	}
+	pconf = Config{InitialCap: InitialCap, MaxCap: MaximumCap, Factory: nil, Close: closeFac, IdleTimeout: time.Second * 20,
+		MaxIdle: MaxIdleCap, Ping: pingFac}
+	if _, err := NewChannelPool(&pconf); err != ErrInvalidFactoryFunc {
+		t.Errorf("err should be %v, but got %v", ErrInvalidFactoryFunc, err)
+	}
+	pconf = Config{InitialCap: InitialCap, MaxCap: MaximumCap, Factory: factory, Close: nil, IdleTimeout: time.Second * 20,
+		MaxIdle: MaxIdleCap, Ping: pingFac}
+	if _, err := NewChannelPool(&pconf); err != ErrInvalidCloseFunc {
+		t.Errorf("err should be %v, but got %v", ErrInvalidCloseFunc, err)
+	}
+}
+
+func TestFactoryErr(t *testing.T) {
+	error_msg := "invalid factory"
+	invalidFactoryFunc := func() (interface{}, error) {
+		return nil, errors.New(error_msg)
+	}
+	pconf := Config{InitialCap: InitialCap, MaxCap: MaximumCap, Factory: invalidFactoryFunc, Close: closeFac, IdleTimeout: time.Second * 20,
+		MaxIdle: MaxIdleCap, Ping: pingFac}
+	if _, err := NewChannelPool(&pconf); err.Error() != "factory is not able to fill the pool: "+error_msg {
+		t.Errorf("err should be %v, but got %v", ErrInvalidCapSetting, err)
+	}
+}
+
+func TestPingErr(t *testing.T) {
+	error_msg := "invalid factory"
+	invalidFactoryFunc := func() (interface{}, error) {
+		return nil, errors.New(error_msg)
+	}
+	pconf := Config{InitialCap: InitialCap, MaxCap: MaximumCap, Factory: invalidFactoryFunc, Close: closeFac, IdleTimeout: time.Second * 20,
+		MaxIdle: MaxIdleCap, Ping: pingFac}
+	if _, err := NewChannelPool(&pconf); err.Error() != "factory is not able to fill the pool: "+error_msg {
+		t.Errorf("err should be %v, but got %v", ErrInvalidCapSetting, err)
+	}
+}
+
 //
 //func TestPoolConcurrent3(t *testing.T) {
 //	p, _ := NewChannelPool(0, 1, factory)
@@ -255,7 +325,7 @@ func TestPoolConcurrent2(t *testing.T) {
 
 func newChannelPool() (Pool, error) {
 	pconf := Config{InitialCap: InitialCap, MaxCap: MaximumCap, Factory: factory, Close: closeFac, IdleTimeout: time.Second * 20,
-		MaxIdle:MaxIdleCap}
+		MaxIdle: MaxIdleCap, Ping: pingFac}
 	return NewChannelPool(&pconf)
 }
 

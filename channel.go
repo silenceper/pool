@@ -3,15 +3,19 @@ package pool
 import (
 	"errors"
 	"fmt"
-	log "github.com/sirupsen/logrus"
 	"sync"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 	//"reflect"
 )
 
 var (
 	//ErrMaxActiveConnReached 连接池超限
 	ErrMaxActiveConnReached = errors.New("MaxActiveConnReached")
+	ErrInvalidCapSetting    = errors.New("invalid capacity settings")
+	ErrInvalidFactoryFunc   = errors.New("invalid factory func settings")
+	ErrInvalidCloseFunc     = errors.New("invalid close func settings")
 )
 
 // Config 连接池相关配置
@@ -57,13 +61,13 @@ type idleConn struct {
 // NewChannelPool 初始化连接
 func NewChannelPool(poolConfig *Config) (Pool, error) {
 	if !(poolConfig.InitialCap <= poolConfig.MaxIdle && poolConfig.MaxCap >= poolConfig.MaxIdle && poolConfig.InitialCap >= 0) {
-		return nil, errors.New("invalid capacity settings")
+		return nil, ErrInvalidCapSetting
 	}
 	if poolConfig.Factory == nil {
-		return nil, errors.New("invalid factory func settings")
+		return nil, ErrInvalidFactoryFunc
 	}
 	if poolConfig.Close == nil {
-		return nil, errors.New("invalid close func settings")
+		return nil, ErrInvalidCloseFunc
 	}
 
 	c := &channelPool{
