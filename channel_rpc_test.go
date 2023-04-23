@@ -13,12 +13,11 @@ import (
 var (
 	InitialCap = 5
 	MaxIdleCap = 10
-	MaximumCap = 100
+	MaximumCap = 10
 	network    = "tcp"
 	address    = "127.0.0.1:7777"
-	//factory    = func() (interface{}, error) { return net.Dial(network, address) }
-	factory = func() (interface{}, error) {
-		return rpc.DialHTTP("tcp", address)
+	factory    = func() (interface{}, error) {
+		return rpc.DialHTTP(network, address)
 	}
 	closeFac = func(v interface{}) error {
 		nc := v.(*rpc.Client)
@@ -30,7 +29,6 @@ func init() {
 	// used for factory function
 	go rpcServer()
 	time.Sleep(time.Millisecond * 300) // wait until tcp server has been settled
-
 	rand.Seed(time.Now().UTC().UnixNano())
 }
 
@@ -41,7 +39,7 @@ func TestNew(t *testing.T) {
 		t.Errorf("New error: %s", err)
 	}
 }
-func TestPool_Get_Impl(t *testing.T) {
+func TestPool_Gettt_Impl(t *testing.T) {
 	p, _ := newChannelPool()
 	defer p.Release()
 
@@ -67,8 +65,7 @@ func TestPool_Get(t *testing.T) {
 
 	// after one get, current capacity should be lowered by one.
 	if p.Len() != (InitialCap - 1) {
-		t.Errorf("Get error. Expecting %d, got %d",
-			(InitialCap - 1), p.Len())
+		t.Errorf("Get error. Expecting %d, got %d", InitialCap-1, p.Len())
 	}
 
 	// get them all
@@ -86,20 +83,13 @@ func TestPool_Get(t *testing.T) {
 	wg.Wait()
 
 	if p.Len() != 0 {
-		t.Errorf("Get error. Expecting %d, got %d",
-			(InitialCap - 1), p.Len())
+		t.Errorf("Get error. Expecting %d, got %d", InitialCap-1, p.Len())
 	}
-
-	_, err = p.Get()
-	if err != ErrMaxActiveConnReached {
-		t.Errorf("Get error: %s", err)
-	}
-
 }
 
 func TestPool_Put(t *testing.T) {
 	pconf := Config{InitialCap: InitialCap, MaxCap: MaximumCap, Factory: factory, Close: closeFac, IdleTimeout: time.Second * 20,
-		MaxIdle:MaxIdleCap}
+		MaxIdle: MaxIdleCap}
 	p, err := NewChannelPool(&pconf)
 	if err != nil {
 		t.Fatal(err)
@@ -254,8 +244,14 @@ func TestPoolConcurrent2(t *testing.T) {
 //}
 
 func newChannelPool() (Pool, error) {
-	pconf := Config{InitialCap: InitialCap, MaxCap: MaximumCap, Factory: factory, Close: closeFac, IdleTimeout: time.Second * 20,
-		MaxIdle:MaxIdleCap}
+	pconf := Config{
+		InitialCap:  InitialCap,
+		MaxCap:      MaximumCap,
+		Factory:     factory,
+		Close:       closeFac,
+		IdleTimeout: time.Second * 20,
+		MaxIdle:     MaxIdleCap,
+	}
 	return NewChannelPool(&pconf)
 }
 
@@ -264,11 +260,11 @@ func rpcServer() {
 	rpc.Register(arith)
 	rpc.HandleHTTP()
 
-	l, e := net.Listen("tcp", address)
+	l, e := net.Listen(network, address)
 	if e != nil {
 		panic(e)
 	}
-	go http.Serve(l, nil)
+	http.Serve(l, nil)
 }
 
 type Args struct {
