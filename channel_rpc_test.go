@@ -13,7 +13,7 @@ import (
 var (
 	InitialCap = 5
 	MaxIdleCap = 10
-	MaximumCap = 10
+	MaximumCap = 100
 	network    = "tcp"
 	address    = "127.0.0.1:7777"
 	factory    = func() (interface{}, error) {
@@ -39,7 +39,7 @@ func TestNew(t *testing.T) {
 		t.Errorf("New error: %s", err)
 	}
 }
-func TestPool_Gettt_Impl(t *testing.T) {
+func TestPool_Get_Impl(t *testing.T) {
 	p, _ := newChannelPool()
 	defer p.Release()
 
@@ -88,8 +88,14 @@ func TestPool_Get(t *testing.T) {
 }
 
 func TestPool_Put(t *testing.T) {
-	pconf := Config{InitialCap: InitialCap, MaxCap: MaximumCap, Factory: factory, Close: closeFac, IdleTimeout: time.Second * 20,
-		MaxIdle: MaxIdleCap}
+	pconf := Config{
+		InitialCap:  InitialCap,
+		MaxCap:      MaximumCap,
+		Factory:     factory,
+		Close:       closeFac,
+		IdleTimeout: time.Second * 20,
+		MaxIdle:     MaxIdleCap,
+	}
 	p, err := NewChannelPool(&pconf)
 	if err != nil {
 		t.Fatal(err)
