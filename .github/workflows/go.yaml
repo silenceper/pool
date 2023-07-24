@@ -26,7 +26,7 @@ jobs:
     - name: Build
       run: go build -v ./...
 
-# TODO: uncomment this to enable lint
+# TODO: uncomment this to enable golang lint
 #    - name: Lint
 #      uses: golangci/golangci-lint-action@v3
 #      with:
