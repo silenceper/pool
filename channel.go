@@ -28,7 +28,7 @@ type Config struct {
 	Close func(interface{}) error
 	//检查连接是否有效的方法
 	Ping func(interface{}) error
-	//连接最大空闲时间，超过该事件则将失效
+	//连接最大空闲时间，超过该时间则将失效
 	IdleTimeout time.Duration
 }
 
