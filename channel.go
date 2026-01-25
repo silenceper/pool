@@ -107,9 +107,13 @@ func (c *channelPool) Get() (interface{}, error) {
 	}
 	for {
 		select {
-		case wrapConn := <-conns:
-			if wrapConn == nil {
+		case wrapConn, ok := <-conns:
+			if !ok {
 				return nil, ErrClosed
+			}
+			// If for some reason we received a nil connection from an open channel, skip it.
+			if wrapConn == nil {
+				continue
 			}
 			//判断是否超时，超时则丢弃
 			if timeout := c.idleTimeout; timeout > 0 {
