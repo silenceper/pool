@@ -1,18 +1,25 @@
-# Fix: Handle nil connection from open channel safely
+# 修复：在连接池中遇到的 nil 连接时继续尝试而不是直接报错 (Issue #24)
 
-## Description
-This PR addresses Issue #24 where a nil connection received from the `conns` channel could strictly return `ErrClosed`, potentially masking transient issues or race conditions during pool sizing/resizing.
+## 描述
+此 PR 解决了 Issue #24 中提到的问题。在之前的实现中，如果从 `conns` 通道接收到一个 `nil` 连接，`Get()` 方法会直接返回 `ErrClosed`，即使连接池本身可能仍在运行。这可能会掩盖瞬时的竞争条件或连接池调整大小时的问题。
 
-The changes implement the "comma-ok" idiom for channel reception:
-1. Explicitly checks if the channel is closed (`!ok`) and returns `ErrClosed` in that case.
-2. If the channel is open but the received value is `nil` (which shouldn't happen in a healthy pool but acts as a safeguard), it now `continue`s the loop instead of returning an error, allowing the pool to attempt to retrieve another valid connection or create a new one.
+修复方案采用了 Go 语言中推荐的 "comma-ok" 惯用法来接收通道数据：
+1. 显式检查通道是否已关闭 (`!ok`)。如果通道已关闭，则正确返回 `ErrClosed`。
+2. 如果通道未关闭但接收到的值为 `nil`（这种情况在健康的连接池中不应发生，但作为一个防御性措施），现在的逻辑会执行 `continue` 跳过当前循环，尝试获取下一个有效连接或创建一个新连接，而不是直接中止请求并返回错误。
 
-This robust handling ensures that `nil` values don't prematurely terminate `Get()` calls when the pool is still operational.
+这种健壮的处理方式确保了 `nil` 值不会在连接池正常运行时导致 `Get()` 调用过早失败。
 
-## Changes
-- Modified `channel.go`: Updated `Get()` method to safe-guard against nil connections from open channels.
-- Added `channel_race_test.go`: Added a regression test `TestPoolReleaseRace` to verify behavior during concurrent `Get()` and `Release()` operations.
+## 更改内容
+- 修改 `channel.go`: 更新 `Get()` 方法，增加了对从开放通道接收 nil 连接的防御性处理逻辑。
+- 新增 `channel_test.go`: 添加了回归测试 `TestNilConnInChannel`，用于验证手动注入 `nil` 连接时 `Get()` 能够正确跳过并返回有效连接。
 
-## Test Plan
-- [x] Run `go test -v .` to verify all tests pass, including the new regression test.
-- [x] Verified that `TestPoolReleaseRace` consistently passes and correctly identifies `ErrClosed` when the pool is released.
+## 测试计划
+- [x] 运行 `go test -v .` 以验证所有测试用例通过，包括新添加的回归测试。
+- [x] 验证 `TestNilConnInChannel` 能够稳定通过。
+
+```go
+=== RUN   TestNilConnInChannel
+    channel_test.go:37: p.Get() returned: conn=valid-conn, err=<nil>
+--- PASS: TestNilConnInChannel (0.00s)
+PASS
+```

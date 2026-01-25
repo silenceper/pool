@@ -111,7 +111,6 @@ func (c *channelPool) Get() (interface{}, error) {
 			if !ok {
 				return nil, ErrClosed
 			}
-			// If for some reason we received a nil connection from an open channel, skip it.
 			if wrapConn == nil {
 				continue
 			}
