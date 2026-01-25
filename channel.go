@@ -85,6 +85,10 @@ func NewChannelPool(poolConfig *Config) (Pool, error) {
 			c.Release()
 			return nil, fmt.Errorf("factory is not able to fill the pool: %s", err)
 		}
+		if conn == nil {
+			c.Release()
+			return nil, errors.New("factory returned nil connection")
+		}
 		c.conns <- &idleConn{conn: conn, t: time.Now()}
 	}
 
@@ -112,6 +116,12 @@ func (c *channelPool) Get() (interface{}, error) {
 				return nil, ErrClosed
 			}
 			if wrapConn == nil {
+				continue
+			}
+			if wrapConn.conn == nil {
+				c.mu.Lock()
+				c.openingConns--
+				c.mu.Unlock()
 				continue
 			}
 			//判断是否超时，超时则丢弃
@@ -158,6 +168,10 @@ func (c *channelPool) Get() (interface{}, error) {
 			if err != nil {
 				c.mu.Unlock()
 				return nil, err
+			}
+			if conn == nil {
+				c.mu.Unlock()
+				return nil, errors.New("factory returned nil connection")
 			}
 			c.openingConns++
 			c.mu.Unlock()
