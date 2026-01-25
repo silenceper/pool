@@ -13,6 +13,7 @@ A golang universal network connection pool.
 - More configurable, The connection supports setting the maximum idle time, the timeout connection will be closed and discarded, which can avoid the problem of automatic connection failure when idle
 - Support user setting `ping` method, used to check the connectivity of connection, invalid connection will be discarded
 - Support connection waiting, When the connection pool is full, support for connection waiting (like the go db connection pool)
+- Robustness: Automatically skips nil connections to prevent premature errors during high concurrency or race conditions
 
 ## Basic Usage:
 
