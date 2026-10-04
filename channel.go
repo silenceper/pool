@@ -101,7 +101,10 @@ func (c *channelPool) getConns() chan *idleConn {
 
 // Get 从pool中取一个连接
 func (c *channelPool) Get() (interface{}, error) {
-	conns := c.getConns()
+	c.mu.RLock()
+	conns := c.conns
+	ping := c.ping
+	c.mu.RUnlock()
 	if conns == nil {
 		return nil, ErrClosed
 	}
@@ -120,8 +123,8 @@ func (c *channelPool) Get() (interface{}, error) {
 				}
 			}
 			//判断是否失效，失效则丢弃，如果用户没有设定 ping 方法，就不检查
-			if c.ping != nil {
-				if err := c.Ping(wrapConn.conn); err != nil {
+			if ping != nil {
+				if wrapConn.conn == nil || ping(wrapConn.conn) != nil {
 					c.Close(wrapConn.conn)
 					continue
 				}
@@ -141,6 +144,12 @@ func (c *channelPool) Get() (interface{}, error) {
 				if timeout := c.idleTimeout; timeout > 0 {
 					if ret.idleConn.t.Add(timeout).Before(time.Now()) {
 						//丢弃并关闭该连接
+						c.Close(ret.idleConn.conn)
+						continue
+					}
+				}
+				if ping != nil {
+					if ret.idleConn.conn == nil || ping(ret.idleConn.conn) != nil {
 						c.Close(ret.idleConn.conn)
 						continue
 					}
