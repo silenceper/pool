@@ -151,3 +151,101 @@ func TestPoolGetPingDuringRelease(t *testing.T) {
 		wg.Wait()
 	}
 }
+
+func TestPoolGetFailedPingDuringRelease(t *testing.T) {
+	for _, path := range []string{"idle", "waiting"} {
+		t.Run(path, func(t *testing.T) {
+			conn := new(int)
+			pingStarted := make(chan struct{})
+			finishPing := make(chan struct{})
+			closed := make(chan interface{}, 2)
+			config := &Config{
+				MaxCap:  1,
+				MaxIdle: 1,
+				Factory: func() (interface{}, error) { return conn, nil },
+				Close: func(conn interface{}) error {
+					closed <- conn
+					return nil
+				},
+				Ping: func(interface{}) error {
+					close(pingStarted)
+					<-finishPing
+					return errors.New("connection is unhealthy")
+				},
+			}
+			if path == "idle" {
+				config.InitialCap = 1
+			}
+			p, err := NewChannelPool(config)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer p.Release()
+			defer func() {
+				select {
+				case <-finishPing:
+				default:
+					close(finishPing)
+				}
+			}()
+			if path == "waiting" {
+				if _, err := p.Get(); err != nil {
+					t.Fatal(err)
+				}
+			}
+			type result struct {
+				conn interface{}
+				err  error
+			}
+			done := make(chan result, 1)
+			go func() {
+				conn, err := p.Get()
+				done <- result{conn, err}
+			}()
+			if path == "waiting" {
+				c := p.(*channelPool)
+				deadline := time.Now().Add(time.Second)
+				for {
+					c.mu.RLock()
+					waiting := len(c.connReqs)
+					c.mu.RUnlock()
+					if waiting == 1 {
+						break
+					}
+					if time.Now().After(deadline) {
+						t.Fatal("Get did not wait for a connection")
+					}
+					time.Sleep(time.Millisecond)
+				}
+				if err := p.Put(conn); err != nil {
+					t.Fatal(err)
+				}
+			}
+			select {
+			case <-pingStarted:
+			case <-time.After(time.Second):
+				t.Fatal("Get did not start Ping")
+			}
+			p.Release()
+			close(finishPing)
+			select {
+			case got := <-done:
+				if got.conn != nil || got.err != ErrClosed {
+					t.Fatalf("Get returned (%v, %v), want (nil, ErrClosed)", got.conn, got.err)
+				}
+			case <-time.After(time.Second):
+				t.Fatal("Get did not finish after Release")
+			}
+			if len(closed) != 1 {
+				t.Fatalf("Close called %d times, want once", len(closed))
+			}
+			if got := <-closed; got != conn {
+				t.Errorf("Close received %v, want %v", got, conn)
+			}
+			p.Release()
+			if len(closed) != 0 {
+				t.Error("Release closed the connection again")
+			}
+		})
+	}
+}

@@ -104,6 +104,7 @@ func (c *channelPool) Get() (interface{}, error) {
 	c.mu.RLock()
 	conns := c.conns
 	ping := c.ping
+	closeFun := c.close
 	c.mu.RUnlock()
 	if conns == nil {
 		return nil, ErrClosed
@@ -118,14 +119,14 @@ func (c *channelPool) Get() (interface{}, error) {
 			if timeout := c.idleTimeout; timeout > 0 {
 				if wrapConn.t.Add(timeout).Before(time.Now()) {
 					//丢弃并关闭该连接
-					c.Close(wrapConn.conn)
+					c.closeConn(wrapConn.conn, closeFun)
 					continue
 				}
 			}
 			//判断是否失效，失效则丢弃，如果用户没有设定 ping 方法，就不检查
 			if ping != nil {
 				if wrapConn.conn == nil || ping(wrapConn.conn) != nil {
-					c.Close(wrapConn.conn)
+					c.closeConn(wrapConn.conn, closeFun)
 					continue
 				}
 			}
@@ -144,13 +145,13 @@ func (c *channelPool) Get() (interface{}, error) {
 				if timeout := c.idleTimeout; timeout > 0 {
 					if ret.idleConn.t.Add(timeout).Before(time.Now()) {
 						//丢弃并关闭该连接
-						c.Close(ret.idleConn.conn)
+						c.closeConn(ret.idleConn.conn, closeFun)
 						continue
 					}
 				}
 				if ping != nil {
 					if ret.idleConn.conn == nil || ping(ret.idleConn.conn) != nil {
-						c.Close(ret.idleConn.conn)
+						c.closeConn(ret.idleConn.conn, closeFun)
 						continue
 					}
 				}
@@ -209,12 +210,19 @@ func (c *channelPool) Put(conn interface{}) error {
 
 // Close 关闭单条连接
 func (c *channelPool) Close(conn interface{}) error {
+	return c.closeConn(conn, nil)
+}
+
+func (c *channelPool) closeConn(conn interface{}, closeFun func(interface{}) error) error {
 	if conn == nil {
 		return errors.New("connection is nil. rejecting")
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.close == nil {
+		if closeFun != nil {
+			return closeFun(conn)
+		}
 		return nil
 	}
 	c.openingConns--
